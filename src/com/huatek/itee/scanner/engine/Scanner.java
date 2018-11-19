@@ -16,6 +16,7 @@ import org.eclipse.core.runtime.jobs.ISchedulingRule;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 
+// vince commit
 public class Scanner {
 
 	private static Scanner INSTANCE = null;
