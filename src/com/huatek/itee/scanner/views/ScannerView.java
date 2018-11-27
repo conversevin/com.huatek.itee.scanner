@@ -5,11 +5,13 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.part.*;
 
 import com.huatek.itee.scanner.engine.ContentInfo;
+import com.huatek.itee.scanner.engine.FileInfo;
 import com.huatek.itee.scanner.engine.Scanner;
 
 import org.eclipse.jface.viewers.*;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.layout.GridData;
 import org.eclipse.core.runtime.jobs.IJobChangeEvent;
 import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 import org.eclipse.jface.action.*;
@@ -19,6 +21,10 @@ import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.SashForm;
+import org.eclipse.swt.events.ControlEvent;
+import org.eclipse.swt.events.ControlListener;
+
 import javax.inject.Inject;
 
 /**
@@ -46,110 +52,180 @@ public class ScannerView extends ViewPart {
 	@Inject
 	IWorkbench workbench;
 
-	private TableViewer viewer;
+	private TableViewer lViewer;
+	private TableViewer rViewer;
 	private Action scanConfig;
 	private Action runnScanner;
 	private Action doubleClickAction;
+	private Composite fParent;
+	private PageBook fPagebook;
+	private SashForm fSplitter;
 
-	class ViewLabelProvider extends LabelProvider implements ITableLabelProvider {
-		private Color[] bg = new Color[] { new Color(null, 255, 255, 255), new Color(null, 247, 247, 240) };
-		private Color[] fore = new Color[] { new Color(null, 0, 0, 0), new Color(null, 0, 0, 0) };
+	private Color[] bg = new Color[] { new Color(null, 255, 255, 255), new Color(null, 247, 247, 240) };
+	private Color[] fore = new Color[] { new Color(null, 0, 0, 0), new Color(null, 0, 0, 0) };
+
+	class ContLabelProvider extends LabelProvider implements ITableLabelProvider, ITableColorProvider {
+
+		private Object current = null;
+		private int currentColor = 0;
 
 		@Override
 		public String getColumnText(Object obj, int index) {
+			if (index == 0) {
+				ContentInfo info = (ContentInfo) obj;
+				return info.getContent(true);
+			} else if (index == 1) {
+				ContentInfo info = (ContentInfo) obj;
+				return String.valueOf(info.getFileInfos().size());
+			}
 			return getText(obj);
 		}
 
 		@Override
 		public Image getColumnImage(Object obj, int index) {
-			return getImage(obj);
+			if (index == 0) {
+				return PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FILE);
+			}
+			return null;
 		}
 
 		@Override
-		public Image getImage(Object obj) {
-			return workbench.getSharedImages().getImage(ISharedImages.IMG_OBJ_ELEMENT);
-		}
-
 		public Color getForeground(Object element, int columnIndex) {
-			return fore[columnIndex % 2];
+//			return fore[columnIndex % 2];
+			return fore[currentColor];
 		}
 
+		@Override
 		public Color getBackground(Object element, int columnIndex) {
-			return bg[columnIndex % 2];
+//			return bg[columnIndex % 2];
+			if (current != element) {
+				currentColor = 1 - currentColor;
+				current = element;
+			}
+			return bg[currentColor];
+		}
+	}
+
+	class DetailLabelProvider extends LabelProvider implements ITableLabelProvider {
+
+		@Override
+		public String getColumnText(Object obj, int index) {
+			if (index == 0) {
+				FileInfo info = (FileInfo) obj;
+				return info.getFileName();
+			} else if (index == 1) {
+				FileInfo info = (FileInfo) obj;
+				return String.valueOf(info.getLineNum());
+			}
+			return getText(obj);
+		}
+
+		@Override
+		public Image getColumnImage(Object obj, int index) {
+			if (index == 0) {
+				return PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_FORWARD);
+			}
+			return null;
 		}
 	}
 
 	@Override
 	public void createPartControl(Composite parent) {
-		viewer = new TableViewer(parent, SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL | SWT.FULL_SELECTION | SWT.BORDER);
+		fParent = parent;
+		addResizeListener(parent);
+		fPagebook = new PageBook(parent, 0);
+		fPagebook.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
-		viewer.setContentProvider(ArrayContentProvider.getInstance());
-		viewer.setLabelProvider(new ViewLabelProvider());
-		
-		Table table = viewer.getTable();
+		fSplitter = new SashForm(fPagebook, SWT.HORIZONTAL | SWT.NULL);
+		fSplitter.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+//		fSplitter.setBackground(Display.getDefault().getSystemColor(SWT.COLOR_RED));
+
+		fPagebook.showPage(fSplitter);
+
+		lViewer = new TableViewer(fSplitter, SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL | SWT.FULL_SELECTION | SWT.BORDER);
+		createLeftColumns();
+		Table table = lViewer.getTable();
 		table.setHeaderVisible(true);
 		table.setLinesVisible(true);
-		
-		
-		createColumns(parent);
-		
+		lViewer.setContentProvider(ArrayContentProvider.getInstance());
+		lViewer.setLabelProvider(new ContLabelProvider());
+
+		rViewer = new TableViewer(fSplitter, SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL | SWT.FULL_SELECTION | SWT.BORDER);
+		createRightColumns();
+		Table rTable = rViewer.getTable();
+		rTable.setHeaderVisible(true);
+		rTable.setLinesVisible(true);
+		rViewer.setContentProvider(ArrayContentProvider.getInstance());
+		rViewer.setLabelProvider(new DetailLabelProvider());
 
 		// Create the help context id for the viewer's control
-		workbench.getHelpSystem().setHelp(viewer.getControl(), "com.huatek.itee.scanner.viewer");
-		getSite().setSelectionProvider(viewer);
+		workbench.getHelpSystem().setHelp(lViewer.getControl(), "com.huatek.itee.scanner.viewer");
+		workbench.getHelpSystem().setHelp(rViewer.getControl(), "com.huatek.itee.scanner.detailViewer");
+		getSite().setSelectionProvider(lViewer);
 		makeActions();
 		hookContextMenu();
 		hookDoubleClickAction();
+		hookSelectionChangeAction();
 		contributeToActionBars();
 	}
 
-	private void createColumns(final Composite parent) {
-		String[] titles = { "sentance", "times", "class", "line" };
-		int[] bounds = { 300, 30, 300, 30 };
-
-		// 1 col
-		TableViewerColumn col = createTableViewerColumn(titles[0], bounds[0], 0);
-		col.setLabelProvider(new ColumnLabelProvider() {
+	private void addResizeListener(Composite parent) {
+		parent.addControlListener(new ControlListener() {
 			@Override
-			public String getText(Object element) {
-				ContentInfo info = (ContentInfo) element;
-				return info.getContent();
+			public void controlMoved(ControlEvent e) {
+				// TODO
 			}
-		});
 
-		// 2 times
-		col = createTableViewerColumn(titles[1], bounds[1], 1);
-		col.setLabelProvider(new ColumnLabelProvider() {
 			@Override
-			public String getText(Object element) {
-				ContentInfo info = (ContentInfo) element;
-				return String.valueOf(info.getFileInfos().size());
-			}
-		});
-
-		// 3 class
-		col = createTableViewerColumn(titles[2], bounds[2], 2);
-		col.setLabelProvider(new ColumnLabelProvider() {
-			@Override
-			public String getText(Object element) {
-				ContentInfo info = (ContentInfo) element;
-				return info.getFileInfos().get(0).getLocation();
-			}
-		});
-
-		// 4 line
-		col = createTableViewerColumn(titles[3], bounds[3], 3);
-		col.setLabelProvider(new ColumnLabelProvider() {
-			@Override
-			public String getText(Object element) {
-				ContentInfo info = (ContentInfo) element;
-				return String.valueOf(info.getFileInfos().get(0).getLineNum());
+			public void controlResized(ControlEvent e) {
+//				computeOrientation();
 			}
 		});
 	}
-	
+
+	private void createLeftColumns() {
+		String[] titles = { "sentence", "times" };
+		int[] bounds = { 500, 30 };
+
+		// 1 col
+		TableViewerColumn col = createTableViewerColumn(titles[0], bounds[0], 0);
+		col.setLabelProvider(new ColumnLabelProvider());
+
+		// 2 times
+		col = createTableViewerColumn(titles[1], bounds[1], 1);
+		col.setLabelProvider(new ColumnLabelProvider());
+	}
+
 	private TableViewerColumn createTableViewerColumn(String title, int bound, final int colNumber) {
-		final TableViewerColumn viewerColumn = new TableViewerColumn(viewer, SWT.V_SCROLL | SWT.H_SCROLL | SWT.BORDER);
+		final TableViewerColumn viewerColumn = new TableViewerColumn(lViewer, SWT.NONE);
+		final TableColumn column = viewerColumn.getColumn();
+		column.setText(title);
+		column.setWidth(bound);
+		column.setResizable(true);
+		column.setMoveable(true);
+		return viewerColumn;
+	}
+
+	private void createRightColumns() {
+		String[] titles = { "class", "line" };
+		int[] bounds = { 400, 30 };
+
+		// 1 file name
+		TableViewerColumn col = createDetailColumn(titles[0], bounds[0], 0);
+		col.setLabelProvider(new ColumnLabelProvider());
+//			@Override
+//			public String getText(Object element) {
+//				FileInfo info = (FileInfo) element;
+//				return info.getFileName();
+//			}
+
+		// 2 line
+		col = createDetailColumn(titles[1], bounds[1], 1);
+		col.setLabelProvider(new ColumnLabelProvider());
+	}
+
+	private TableViewerColumn createDetailColumn(String title, int bound, final int colNumber) {
+		final TableViewerColumn viewerColumn = new TableViewerColumn(rViewer, SWT.V_SCROLL | SWT.H_SCROLL | SWT.BORDER);
 		final TableColumn column = viewerColumn.getColumn();
 		column.setText(title);
 		column.setWidth(bound);
@@ -167,9 +243,9 @@ public class ScannerView extends ViewPart {
 				ScannerView.this.fillContextMenu(manager);
 			}
 		});
-		Menu menu = menuMgr.createContextMenu(viewer.getControl());
-		viewer.getControl().setMenu(menu);
-		getSite().registerContextMenu(menuMgr, viewer);
+		Menu menu = menuMgr.createContextMenu(lViewer.getControl());
+		lViewer.getControl().setMenu(menu);
+		getSite().registerContextMenu(menuMgr, lViewer);
 	}
 
 	private void contributeToActionBars() {
@@ -218,7 +294,10 @@ public class ScannerView extends ViewPart {
 						Display.getDefault().asyncExec(new Runnable() {
 							@Override
 							public void run() {
-								viewer.setInput(Scanner.getInstance().getContentInfo());
+								if (lViewer.getControl().isDisposed()) {
+									return;
+								}
+								lViewer.setInput(Scanner.getInstance().getContentInfo());
 							}
 						});
 					}
@@ -231,7 +310,7 @@ public class ScannerView extends ViewPart {
 		doubleClickAction = new Action() {
 			@Override
 			public void run() {
-				IStructuredSelection selection = viewer.getStructuredSelection();
+				IStructuredSelection selection = lViewer.getStructuredSelection();
 				Object obj = selection.getFirstElement();
 				showMessage("Double-click detected on " + obj.toString());
 			}
@@ -239,7 +318,7 @@ public class ScannerView extends ViewPart {
 	}
 
 	private void hookDoubleClickAction() {
-		viewer.addDoubleClickListener(new IDoubleClickListener() {
+		lViewer.addDoubleClickListener(new IDoubleClickListener() {
 			@Override
 			public void doubleClick(DoubleClickEvent event) {
 				doubleClickAction.run();
@@ -247,12 +326,47 @@ public class ScannerView extends ViewPart {
 		});
 	}
 
+	private void hookSelectionChangeAction() {
+		lViewer.addSelectionChangedListener(new ISelectionChangedListener() {
+
+			@Override
+			public void selectionChanged(SelectionChangedEvent event) {
+				if (lViewer.getSelection() instanceof IStructuredSelection) {
+					IStructuredSelection sel = (IStructuredSelection) lViewer.getSelection();
+					if (sel.getFirstElement() instanceof ContentInfo) {
+						ContentInfo ci = (ContentInfo) sel.getFirstElement();
+						if (rViewer.getControl().isDisposed()) {
+							return;
+						}
+						rViewer.setInput(ci.getFileInfos());
+					}
+				}
+			}
+		});
+	}
+
 	private void showMessage(String message) {
-		MessageDialog.openInformation(viewer.getControl().getShell(), "Scanner", message);
+		MessageDialog.openInformation(lViewer.getControl().getShell(), "Scanner", message);
 	}
 
 	@Override
 	public void setFocus() {
-		viewer.getControl().setFocus();
+		fPagebook.setFocus();
+//        lViewer.getControl().setFocus();
+	}
+
+	@Override
+	public void dispose() {
+		// TODO Auto-generated method stub
+		if (runnScanner != null) {
+			runnScanner = null;
+		}
+		if (doubleClickAction != null) {
+			doubleClickAction = null;
+		}
+		if (scanConfig != null) {
+			scanConfig = null;
+		}
+		super.dispose();
 	}
 }

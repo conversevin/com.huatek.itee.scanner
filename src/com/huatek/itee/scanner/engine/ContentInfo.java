@@ -14,7 +14,10 @@ public class ContentInfo {
 		this.fileInfos = fileInfos;
 	}
 
-	public String getContent() {
+	public String getContent(boolean isTrimNeed) {
+		if (isTrimNeed) {
+			return content.trim();
+		}
 		return content;
 	}
 	

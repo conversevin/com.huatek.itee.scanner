@@ -16,7 +16,6 @@ import org.eclipse.core.runtime.jobs.ISchedulingRule;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 
-// vince commit
 public class Scanner {
 
 	private static Scanner INSTANCE = null;
@@ -122,7 +121,7 @@ public class Scanner {
 			while ((tempString = reader.readLine()) != null) {
 				if (FileInfo.isValidLine(tempString)) {
 					System.out.println("== line " + line + ": " + tempString);
-					FileInfo info = new FileInfo(line, file.getCanonicalPath());
+					FileInfo info = new FileInfo(line, file.getName(), file.getCanonicalPath());
 					ArrayList<FileInfo> list = getFileInfo(tempString);
 					if (list == null) {
 						ArrayList<FileInfo> conts = new ArrayList<FileInfo>();
@@ -150,7 +149,7 @@ public class Scanner {
 
 	private ArrayList<FileInfo> getFileInfo(String content) {
 		for (ContentInfo info : contentInfo) {
-			if (info.getContent().equals(content)) {
+			if (info.getContent(false).equals(content)) {
 				return info.getFileInfos();
 			}
 		}
