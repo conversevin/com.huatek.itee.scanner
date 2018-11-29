@@ -17,6 +17,7 @@ import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 import org.eclipse.jface.action.*;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.ui.*;
+import org.eclipse.ui.internal.about.AboutBundleData;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
@@ -24,6 +25,8 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.events.ControlEvent;
 import org.eclipse.swt.events.ControlListener;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
 
 import javax.inject.Inject;
 
@@ -60,6 +63,7 @@ public class ScannerView extends ViewPart {
 	private Composite fParent;
 	private PageBook fPagebook;
 	private SashForm fSplitter;
+	private ScannerComparator comparator;
 
 	private Color[] bg = new Color[] { new Color(null, 255, 255, 255), new Color(null, 247, 247, 240) };
 	private Color[] fore = new Color[] { new Color(null, 0, 0, 0), new Color(null, 0, 0, 0) };
@@ -91,13 +95,13 @@ public class ScannerView extends ViewPart {
 
 		@Override
 		public Color getForeground(Object element, int columnIndex) {
-//			return fore[columnIndex % 2];
+			// return fore[columnIndex % 2];
 			return fore[currentColor];
 		}
 
 		@Override
 		public Color getBackground(Object element, int columnIndex) {
-//			return bg[columnIndex % 2];
+			// return bg[columnIndex % 2];
 			if (current != element) {
 				currentColor = 1 - currentColor;
 				current = element;
@@ -138,17 +142,19 @@ public class ScannerView extends ViewPart {
 
 		fSplitter = new SashForm(fPagebook, SWT.HORIZONTAL | SWT.NULL);
 		fSplitter.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
-//		fSplitter.setBackground(Display.getDefault().getSystemColor(SWT.COLOR_RED));
+		// fSplitter.setBackground(Display.getDefault().getSystemColor(SWT.COLOR_RED));
 
 		fPagebook.showPage(fSplitter);
 
 		lViewer = new TableViewer(fSplitter, SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL | SWT.FULL_SELECTION | SWT.BORDER);
+		comparator = new ScannerComparator();
 		createLeftColumns();
 		Table table = lViewer.getTable();
 		table.setHeaderVisible(true);
 		table.setLinesVisible(true);
 		lViewer.setContentProvider(ArrayContentProvider.getInstance());
 		lViewer.setLabelProvider(new ContLabelProvider());
+		lViewer.setComparator(comparator);
 
 		rViewer = new TableViewer(fSplitter, SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL | SWT.FULL_SELECTION | SWT.BORDER);
 		createRightColumns();
@@ -178,7 +184,7 @@ public class ScannerView extends ViewPart {
 
 			@Override
 			public void controlResized(ControlEvent e) {
-//				computeOrientation();
+				// computeOrientation();
 			}
 		});
 	}
@@ -190,10 +196,26 @@ public class ScannerView extends ViewPart {
 		// 1 col
 		TableViewerColumn col = createTableViewerColumn(titles[0], bounds[0], 0);
 		col.setLabelProvider(new ColumnLabelProvider());
+		addColumnAdapter(col.getColumn());
 
 		// 2 times
 		col = createTableViewerColumn(titles[1], bounds[1], 1);
 		col.setLabelProvider(new ColumnLabelProvider());
+	}
+	
+	private void addColumnAdapter(TableColumn column) {
+		column.addSelectionListener(new SelectionAdapter() {
+			public void widgetSelected(SelectionEvent e) {
+				lViewer.setComparator(comparator);
+				boolean asc = comparator.isAscending();
+				comparator.setAscending(!asc);
+				
+		        int dir = comparator.getDirection();
+		        lViewer.getTable().setSortDirection(dir);
+		        lViewer.getTable().setSortColumn(column);
+		        lViewer.refresh();
+			}
+		});
 	}
 
 	private TableViewerColumn createTableViewerColumn(String title, int bound, final int colNumber) {
@@ -213,11 +235,11 @@ public class ScannerView extends ViewPart {
 		// 1 file name
 		TableViewerColumn col = createDetailColumn(titles[0], bounds[0], 0);
 		col.setLabelProvider(new ColumnLabelProvider());
-//			@Override
-//			public String getText(Object element) {
-//				FileInfo info = (FileInfo) element;
-//				return info.getFileName();
-//			}
+		// @Override
+		// public String getText(Object element) {
+		// FileInfo info = (FileInfo) element;
+		// return info.getFileName();
+		// }
 
 		// 2 line
 		col = createDetailColumn(titles[1], bounds[1], 1);
@@ -352,7 +374,7 @@ public class ScannerView extends ViewPart {
 	@Override
 	public void setFocus() {
 		fPagebook.setFocus();
-//        lViewer.getControl().setFocus();
+		// lViewer.getControl().setFocus();
 	}
 
 	@Override
@@ -368,5 +390,38 @@ public class ScannerView extends ViewPart {
 			scanConfig = null;
 		}
 		super.dispose();
+	}
+
+	class ScannerComparator extends ViewerComparator {
+		private boolean ascending = true;
+		
+		public boolean isAscending() {
+			return ascending;
+		}
+
+		public int getDirection() {
+			return ascending ? SWT.DOWN : SWT.UP;
+		}
+
+		public void setAscending(boolean ascending) {
+			this.ascending = ascending;
+		}
+
+		public int compare(Viewer iviewer, Object e1, Object e2) {
+			if (e1 == null) {
+				return -1;
+			} else if (e2 == null) {
+				return 1;
+			} else {
+				int result = ((ContentInfo) e1).getContent(true)
+						.compareToIgnoreCase(((ContentInfo) e2).getContent(true));
+				return ascending ? result : (-1) * result;
+			}
+		}
+
+		@Override
+		public void sort(Viewer viewer, Object[] elements) {
+			super.sort(viewer, elements);
+		}
 	}
 }
